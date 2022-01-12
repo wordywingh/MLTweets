@@ -94,13 +94,13 @@ model_LR.fit(X_train, y_train)
 def hate_speech_detection():
     import streamlit as st
     st.title("Hate Speech Detection")
-    user = st.text_area("Enter any Tweet: ")
+    user = st.text_area("Please enter the Tweet to be analyzed:")
     if len(user) < 1:
         st.write("  ")
     else:
         sample = user
         data = tfidf_vectorizer.transform([sample]).toarray()
         a = model_LR.predict(data)
-        st.title(a)
+        st.subheader("This Tweet is: "+ str(a))
         
 hate_speech_detection()
