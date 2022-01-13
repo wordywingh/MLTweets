@@ -1,32 +1,41 @@
-from nltk.util import pr
+# import statements
 import pandas as pd
 import numpy as np
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from nltk.stem.porter import *
+import re
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import f1_score
+import warnings
 from sklearn.linear_model import LogisticRegression
+from imblearn.over_sampling import SMOTE
+from collections import Counter
+from sklearn.model_selection import train_test_split
 
+# read in the data
 data = pd.read_csv("twitter.csv")
 
+# creating a new column to store the classification labels of tweets
 data["labels"] = data["class"].map({0: "Hateful", 1: "Offensive", 2: "Neither hateful nor offensive"})
 
-# creating a new dataframe containing only the columns needed for the modelling
+# creating a new dataframe containing only the columns needed for the modeling
 data_v1 = data[["tweet", "labels"]]
 
-import re
-import nltk
-from nltk.stem.porter import *
-
-stemmer = PorterStemmer()
-from nltk.corpus import stopwords
-import string
-
+# download and set stopwords to be used with nltk
 nltk.download('stopwords')
-
 stopwords = nltk.corpus.stopwords.words("english")
-#extending the stopwords to include other words used in twitter such as retweet(rt) etc.
+
+# extending the stopwords to include other words used in twitter such as retweet(rt) etc.
 other_exclusions = ["#ff", "ff", "rt"]
 stopwords.extend(other_exclusions)
+stemmer = PorterStemmer()
 
+# text preprocessing function declaration
 def preprocess(tweet):  
     
     # removal of extra spaces
@@ -68,14 +77,14 @@ def preprocess(tweet):
     
     return tweets_p
 
-# creating a col to store cleaned up tweets
-data_v1['clean_tweets'] = preprocess(data_v1.tweet)
+# collecting only the tweets from the csv file into a variable name tweet
+tweet=data_v1.tweet
+processed_tweets = preprocess(tweet)   
+data_v1['processed_tweets'] = processed_tweets
 
-# applying TF-IDF on the cleaned up tweet
+# applying TF-IDF on the processed tweet
 tfidf_vectorizer = TfidfVectorizer(ngram_range=(1, 2),max_df=0.75, min_df=5, max_features=10000)
-
-# TF-IDF feature matrix
-tfidf = tfidf_vectorizer.fit_transform(data_v1['clean_tweets'] )
+tfidf = tfidf_vectorizer.fit_transform(data_v1['processed_tweets'])
 
 # input data
 X = tfidf
@@ -86,10 +95,16 @@ y = data_v1['labels']
 # splitting the data into train and test set
 X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=14, test_size=0.2)
 
-#fitting the model to train data
-model_LR = LogisticRegression(multi_class='multinomial', solver='lbfgs', max_iter = 500)
-model_LR.fit(X_train, y_train)
-# model_LR.score(X_test, y_test)
+# ignore warnings setting on
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
+# apply SMOTE oversampling to improve detection of hateful speech
+smt = SMOTE( sampling_strategy={'Hateful':15367,'Offensive':15367,'Neither hateful nor offensive':15367}, k_neighbors=2, random_state=1)
+X_train_smt, y_train_smt = smt.fit_resample(X_train,y_train)
+
+# create final model after applying hypertuning parameter
+final_model = LogisticRegression(multi_class='multinomial', solver='saga', penalty='l2',C=1,max_iter = 1000)
+final_model.fit(X_train_smt,y_train_smt)
 
 def hate_speech_detection():
     import streamlit as st
@@ -100,7 +115,7 @@ def hate_speech_detection():
     else:
         sample = user
         data = tfidf_vectorizer.transform([sample]).toarray()
-        a = model_LR.predict(data)
+        a = final_model.predict(data)
         st.subheader("This Tweet is: "+ str(a))
         
 hate_speech_detection()
